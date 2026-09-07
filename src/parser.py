@@ -1,4 +1,5 @@
 def chunk_text(text: str, chunk_size: int = 400, overlap: int = 50) -> list[str]:
+    if not text: return []
     chunk_list = list()
     start = 0
     end = chunk_size

@@ -8,3 +8,27 @@ def test_chunk_text_basic():
     assert isinstance(chunks, list)
     assert len(chunks) > 0
     assert chunks[0].startswith('Это')
+
+
+def test_chunk_text_empty():
+    text = ""
+    chunks = chunk_text(text, chunk_size=20, overlap=5)
+
+    assert isinstance(chunks, list)
+    assert len(chunks) == 0
+
+
+def test_chunk_text_short():
+    text = "Это простой тестовый текст для проверки работы нашего чанкера"
+    chunks = chunk_text(text, chunk_size=100, overlap=5)
+
+    assert isinstance(chunks, list)
+    assert len(chunks) == 1
+
+
+def test_chunk_text_space():
+    text = "Это простой тестовый текст для проверки работы нашего чанкера"
+    chunks = chunk_text(text, chunk_size=10, overlap=2)
+
+    assert isinstance(chunks, list)
+    assert len(max(chunks, key=len)) <= 10
