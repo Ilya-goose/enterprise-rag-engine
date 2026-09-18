@@ -47,7 +47,15 @@ class VectorStore:
         dot_product = filtered_vector_matrix @ query_vector
         norms = linalg.norm(filtered_vector_matrix, axis=1) * linalg.norm(query_vector)
         scores = divide(dot_product, norms, out=zeros_like(dot_product), where=norms!=0)
-        local_idx_best_scores = argsort(argpartition(scores, -valid_k)[-valid_k:])[::-1]
+        current_valid_k = min(len(scores), top_k)
+        # 1. Находим топ-k индексов через argpartition
+        top_indices = argpartition(scores, -current_valid_k)[-current_valid_k:]
+
+        # 2. Сортируем ИМЕННО ПО ЗНАЧЕНИЯМ SCORES для этих индексов
+        sorted_sub_indices = argsort(scores[top_indices])
+
+        # 3. Применяем обратно и разворачиваем от большего к меньшему
+        local_idx_best_scores = top_indices[sorted_sub_indices][::-1]
         global_indices = index_map[local_idx_best_scores]
         return [self.metadata[i] for i in global_indices]
 
