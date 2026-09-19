@@ -1,10 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Header, Depends
 from pydantic import BaseModel
 from src.vector_store import VectorStore
 
+
 # Создаем приложение
 app = FastAPI(title="VectorDB Enterprise")
-
+SECRET_TOKEN = "enterprise-rag-2024"
 store = VectorStore(dim=3)
 
 # Описываем структуру входящего запроса через Pydantic
@@ -18,13 +19,59 @@ class SearchRequest(BaseModel):
     filters: dict | None
 
 
-@app.post("/add")
+class FileRequest(BaseModel):
+    filepath: str
+
+class BatchAddRequest(BaseModel):
+    vectors: list[list[float]]
+    payloads: list[dict]
+
+
+def verify_token(x_api_key: str = Header(...)):
+    if x_api_key != SECRET_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+
+
+@app.post("/add", dependencies=[Depends(verify_token)])
 def add(request: AddRequest) -> dict:
-    store.add(request.vector, request.payload)
-    return {"message": "Vector added successfully"}
+    try:
+        store.add(request.vector, request.payload)
+        return {"message": "Vector added successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.post("/search")
+@app.post("/search", dependencies=[Depends(verify_token)])
 def search(request: SearchRequest) -> dict:
-    res = store.search(request.query_vector, request.top_k, request.filters)
-    return {"results": res}
+    try:
+        res = store.search(request.query_vector, request.top_k, request.filters)
+        return {"results": res}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/save", dependencies=[Depends(verify_token)])
+def save(request: FileRequest) -> dict:
+    store.save(request.filepath)
+    return {"message": f"Database saved to {request.filepath}"}
+
+
+@app.post("/load", dependencies=[Depends(verify_token)])
+def load(request: FileRequest) -> dict:
+    global store
+    store = VectorStore.load(request.filepath)
+    return {"message": f"Database loaded from {request.filepath}"}
+
+
+@app.post("/add_batch", dependencies=[Depends(verify_token)])
+def add_batch(request: BatchAddRequest):
+    try:
+        store.add_batch(request.vectors, request.payloads)
+        return {"message": f"Successfully added {len(request.vectors)} vectors"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/stats", dependencies=[Depends(verify_token)])
+def get_stats():
+    return store.get_stats()
