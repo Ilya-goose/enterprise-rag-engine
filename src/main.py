@@ -75,3 +75,17 @@ def add_batch(request: BatchAddRequest):
 @app.get("/stats", dependencies=[Depends(verify_token)])
 def get_stats():
     return store.get_stats()
+
+
+@app.delete("/delete/{doc_id}", dependencies=[Depends(verify_token)])
+def delete_document(doc_id: str) -> dict:
+    success = store.delete(doc_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"message": f"Document {doc_id} deleted successfully"}
+
+
+@app.post("/vacuum", dependencies=[Depends(verify_token)])
+def vacuum():
+    count_deleted = store.vacuum()
+    return {"message": "Vacuum completed", "freed_elements": count_deleted}

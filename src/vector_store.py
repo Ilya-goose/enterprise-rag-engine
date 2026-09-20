@@ -18,10 +18,15 @@ class VectorStore:
         if len(vector) != self.dim:
             raise ValueError(f"Ожидается размерность {self.dim}, получено {len(vector)}")
 
+        vector_arr = array(vector)
+        norm = linalg.norm(vector_arr)
+        if norm > 0:
+            vector_arr = vector_arr / norm
+
         if payload is None:
             payload = {}
 
-        self.vectors.append(array(vector))
+        self.vectors.append(vector_arr)
         self.metadata.append(payload)
 
         if "id" not in payload.keys():
@@ -45,32 +50,39 @@ class VectorStore:
         if len(query_vector) != self.dim:
             raise ValueError(f"Ожидается размерность {self.dim}, получено {len(query_vector)}")
 
+        query_vector_arr = array(query_vector)
+        norm_query = linalg.norm(query_vector)
+        if norm_query > 0:
+            query_vector_arr = query_vector_arr / norm_query
+
         if not self.vectors: return []
 
         valid_k = min(len(self.vectors), top_k)
         if not valid_k: return []
 
+        # Создаем базовую маску: True только для НЕ удаленных элементов
+        active_mask = ~array(self.is_deleted)
         if not filters or filters is None:
-            index_map = arange(len(self.vectors))
+            # Если фильтров нет, используем только маску активности
+            mask = active_mask
         else:
-            mask = None
+            # Если фильтры есть, начинаем с маски активности
+            mask = active_mask
             for key, value in filters.items():
                 if key not in self.columns:
-                    index_map = []
+                    # Если запросили неизвестную колонку, ничего не найдем
+                    mask = zeros_like(mask, dtype=bool)
                     break
                 current_mask = (array(self.columns[key]) == value)
-                mask = current_mask if mask is None else (mask & current_mask)
-            else:
-                index_map = where(mask)[0]
+                mask = mask & current_mask
+        index_map = where(mask)[0]
 
         if len(index_map) == 0:
             return []
 
         vector_matrix = array(self.vectors)
         filtered_vector_matrix = vector_matrix[index_map]
-        dot_product = filtered_vector_matrix @ query_vector
-        norms = linalg.norm(filtered_vector_matrix, axis=1) * linalg.norm(query_vector)
-        scores = divide(dot_product, norms, out=zeros_like(dot_product), where=norms!=0)
+        scores = filtered_vector_matrix @ query_vector_arr
         current_valid_k = min(len(scores), top_k)
         # 1. Находим топ-k индексов через argpartition
         top_indices = argpartition(scores, -current_valid_k)[-current_valid_k:]
@@ -116,6 +128,44 @@ class VectorStore:
         # Удаляем связь из словаря индексов
         del self.id_to_index[doc_id]
         return True
+
+    def vacuum(self) -> int:
+        if self.is_deleted.count(True) == 0:
+            return 0
+
+        new_vectors = []
+        new_metadata = []
+        new_is_deleted = []
+        new_id_to_index = {}
+
+        # 1. Фильтруем живые элементы
+        for i in range(len(self.vectors)):
+            if not self.is_deleted[i]:
+                new_vectors.append(self.vectors[i])
+                new_metadata.append(self.metadata[i])
+                new_is_deleted.append(False)
+                new_id_to_index[self.metadata[i]["id"]] = len(new_vectors) - 1
+
+        # 2. Пересбор колонок
+        all_keys = set()
+        for meta in new_metadata:
+            all_keys.update(meta.keys())
+
+        new_columns = {}
+        for key in all_keys:
+            new_columns[key] = [meta.get(key, None) for meta in new_metadata]
+
+        # 3. Перезаписываем состояние базы
+        count_deleted = len(self.vectors) - len(new_vectors)
+        self.vectors = new_vectors
+        self.metadata = new_metadata
+        self.is_deleted = new_is_deleted
+        self.id_to_index = new_id_to_index
+        self.columns = new_columns
+
+        return count_deleted
+
+
 
 
 
