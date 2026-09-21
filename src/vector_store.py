@@ -5,13 +5,13 @@ import uuid
 
 
 class VectorStore:
-    def __init__(self, dim):
-        self.dim = dim
-        self.metadata = []
-        self.vectors = []
-        self.columns = {}
-        self.id_to_index = {}
-        self.is_deleted = []
+    def __init__(self, dim: int):
+        self.dim: int = dim
+        self.metadata: list[dict] = []
+        self.vectors: list = []
+        self.columns: dict[str, list] = {}
+        self.id_to_index: dict[str, int] = {}
+        self.is_deleted: list[bool] = []
 
 
     def add(self, vector, payload) -> None:
@@ -46,7 +46,7 @@ class VectorStore:
                 self.columns[key].append(None)
 
 
-    def search(self, query_vector, top_k, filters: dict = None) -> list[dict]:
+    def search(self, query_vector, top_k, filters: dict = None, threshold: float = 0.0) -> list[dict]:
         if len(query_vector) != self.dim:
             raise ValueError(f"Ожидается размерность {self.dim}, получено {len(query_vector)}")
 
@@ -83,16 +83,25 @@ class VectorStore:
         vector_matrix = array(self.vectors)
         filtered_vector_matrix = vector_matrix[index_map]
         scores = filtered_vector_matrix @ query_vector_arr
-        current_valid_k = min(len(scores), top_k)
-        # 1. Находим топ-k индексов через argpartition
-        top_indices = argpartition(scores, -current_valid_k)[-current_valid_k:]
 
-        # 2. Сортируем ИМЕННО ПО ЗНАЧЕНИЯМ SCORES для этих индексов
-        sorted_sub_indices = argsort(scores[top_indices])
+        # 1. Находим индексы, прошедшие порог
+        threshold_indices = where(scores >= threshold)[0]
+        if len(threshold_indices) == 0:
+            return []
 
-        # 3. Применяем обратно и разворачиваем от большего к меньшему
+        valid_scores = scores[threshold_indices]
+        current_valid_k = min(len(valid_scores), top_k)
+
+        # 2. Находим топ-k индексов через argpartition
+        top_indices = argpartition(valid_scores, -current_valid_k)[-current_valid_k:]
+
+        # 3. Сортируем по значениям валидных скоров
+        sorted_sub_indices = argsort(valid_scores[top_indices])
+
+        # 4. Применяем двойную маппировку индексов (threshold -> index_map -> global)
         local_idx_best_scores = top_indices[sorted_sub_indices][::-1]
-        global_indices = index_map[local_idx_best_scores]
+        global_indices = index_map[threshold_indices[local_idx_best_scores]]
+
         return [self.metadata[i] for i in global_indices]
 
     def save(self, filepath: str) -> None:

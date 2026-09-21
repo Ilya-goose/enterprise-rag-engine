@@ -22,6 +22,7 @@ class SearchRequest(BaseModel):
     query_vector: list[float]
     top_k: int
     filters: dict | None
+    threshold: float | None = 0.0
 
 
 class FileRequest(BaseModel):
@@ -49,7 +50,7 @@ def add(request: AddRequest) -> dict:
 @app.post("/search", dependencies=[Depends(verify_token)])
 def search(request: SearchRequest) -> dict:
     try:
-        res = store.search(request.query_vector, request.top_k, request.filters)
+        res = store.search(request.query_vector, request.top_k, request.filters, request.threshold)
         return {"results": res}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
