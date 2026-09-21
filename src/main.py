@@ -13,6 +13,11 @@ class AddRequest(BaseModel):
     vector: list[float]
     payload: dict
 
+class UpdateRequest(BaseModel):
+    vector: list[float] | None = None
+    payload: dict | None = None
+
+
 class SearchRequest(BaseModel):
     query_vector: list[float]
     top_k: int
@@ -89,3 +94,11 @@ def delete_document(doc_id: str) -> dict:
 def vacuum():
     count_deleted = store.vacuum()
     return {"message": "Vacuum completed", "freed_elements": count_deleted}
+
+
+@app.put("/update/{doc_id}", dependencies=[Depends(verify_token)])
+def update_document(doc_id: str, request: UpdateRequest) -> dict:
+    success = store.update(doc_id, request.vector, request.payload)
+    if not success:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"message": "Document updated successfully"}

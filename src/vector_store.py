@@ -165,6 +165,25 @@ class VectorStore:
 
         return count_deleted
 
+    def update(self, doc_id: str, new_vector: list[float] = None, new_payload: dict = None) -> bool:
+        if doc_id not in self.id_to_index: return False
+        idx = self.id_to_index[doc_id]
+        if new_vector is None:
+            new_vector = self.vectors[idx].tolist()
+
+        new_metadata = self.metadata[idx].copy()
+        if not (new_payload is None):
+            new_metadata.update(new_payload)
+
+        new_metadata["id"] = doc_id
+
+
+        self.delete(doc_id)
+        self.add(new_vector, new_metadata)
+        return True
+
+
+
 
 
 
