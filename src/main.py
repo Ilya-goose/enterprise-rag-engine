@@ -32,6 +32,9 @@ class BatchAddRequest(BaseModel):
     vectors: list[list[float]]
     payloads: list[dict]
 
+class BatchDeleteRequest(BaseModel):
+    list_doc_id: list[str]
+
 
 def verify_token(x_api_key: str = Header(...)):
     if x_api_key != SECRET_TOKEN:
@@ -78,6 +81,16 @@ def add_batch(request: BatchAddRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.post("/delete_batch", dependencies=[Depends(verify_token)])
+def delete_batch(request: BatchDeleteRequest):
+    try:
+        result = store.delete_batch(request.list_doc_id)
+        return {"message": f"Successfully deleted {len(request.list_doc_id) - len(result)} documents",
+                "not found": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/stats", dependencies=[Depends(verify_token)])
 def get_stats():
     return store.get_stats()
@@ -103,3 +116,11 @@ def update_document(doc_id: str, request: UpdateRequest) -> dict:
     if not success:
         raise HTTPException(status_code=404, detail="Document not found")
     return {"message": "Document updated successfully"}
+
+
+@app.get("/get/{doc_id}", dependencies=[Depends(verify_token)])
+def get(doc_id: str) -> dict | None:
+    res = store.get(doc_id)
+    if res is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"result": res}

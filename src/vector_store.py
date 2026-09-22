@@ -123,6 +123,20 @@ class VectorStore:
         for i in range(len(vectors)):
             self.add(vectors[i], payloads[i])
 
+    def delete_batch(self, list_doc_id: list[str]) -> list[str]:
+        if not len(list_doc_id):
+            raise ValueError("Батч пуст")
+
+        list_not_deleted: list[str] = []
+        for doc_id in list_doc_id:
+            res = self.delete(doc_id)
+            if not res:
+                list_not_deleted.append(doc_id)
+
+        return list_not_deleted
+
+
+
 
     def get_stats(self) -> dict:
         return {"count": len(self.vectors), "dimension": self.dim}
@@ -190,6 +204,12 @@ class VectorStore:
         self.delete(doc_id)
         self.add(new_vector, new_metadata)
         return True
+
+
+    def get(self, doc_id: str) -> dict | None:
+        if (doc_id not in self.id_to_index): return None
+        idx = self.id_to_index[doc_id]
+        return self.metadata[idx]
 
 
 
