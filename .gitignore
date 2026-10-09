@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+.env
+__pycache__/
+*.pyc
+.idea/
+.venv/
+
+# Векторные дампы и локальные базы
+*.pkl
+*.pickle
+*.db
+/data/

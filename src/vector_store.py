@@ -102,7 +102,14 @@ class VectorStore:
         local_idx_best_scores = top_indices[sorted_sub_indices][::-1]
         global_indices = index_map[threshold_indices[local_idx_best_scores]]
 
-        return [self.metadata[i] for i in global_indices]
+        best_scores = valid_scores[local_idx_best_scores]
+        results = []
+        for idx, score in zip(global_indices, best_scores):
+            item = self.metadata[idx].copy()
+            item["score"] = float(score)
+            results.append(item)
+
+        return results
 
     def save(self, filepath: str) -> None:
         path = Path(filepath)

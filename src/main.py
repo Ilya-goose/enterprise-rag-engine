@@ -1,12 +1,14 @@
 from fastapi import FastAPI, HTTPException, Header, Depends
 from pydantic import BaseModel
 from src.vector_store import VectorStore
+from src.config import settings
+from src.embedder import Embedder
 
+# Инициализируем компоненты, используя переменные из конфигурации
+app = FastAPI(title="VectorDB Enterprise", version="1.0.0")
+store = VectorStore(dim=settings.vector_dim)
+embedder = Embedder(model_name=settings.embedder_model)
 
-# Создаем приложение
-app = FastAPI(title="VectorDB Enterprise")
-SECRET_TOKEN = "enterprise-rag-2024"
-store = VectorStore(dim=3)
 
 # Описываем структуру входящего запроса через Pydantic
 class AddRequest(BaseModel):
@@ -36,8 +38,14 @@ class BatchDeleteRequest(BaseModel):
     list_doc_id: list[str]
 
 
+class AddTextRequest(BaseModel):
+    text: str
+    payload: dict
+
+
+# Обновляем проверку токена на использование settings
 def verify_token(x_api_key: str = Header(...)):
-    if x_api_key != SECRET_TOKEN:
+    if x_api_key != settings.api_token:
         raise HTTPException(status_code=401, detail="Invalid API Key")
 
 
@@ -124,3 +132,54 @@ def get(doc_id: str) -> dict | None:
     if res is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return {"result": res}
+
+
+@app.post("/add_text", dependencies=[Depends(verify_token)])
+def add_text(request: AddTextRequest):
+    """
+    Эндпоинт "Всё включено": клиент шлет просто текст,
+    а движок сам превращает его в вектор и кладет в базу.
+    """
+    try:
+        # 1. Прогоняем текст через нейросеть
+        vector = embedder.encode(request.text)
+
+        # 2. Сохраняем оригинальный текст в метаданные, чтобы потом его найти
+        payload = request.payload.copy()
+        payload["original_text"] = request.text
+
+        # 3. Добавляем в базу
+        store.add(vector, payload)
+        return {"message": "Text embedded and added successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+class SearchTextRequest(BaseModel):
+    query_text: str
+    top_k: int = 3
+    filters: dict | None = None
+    threshold: float | None = 0.0
+
+
+@app.post("/search_text", dependencies=[Depends(verify_token)])
+def search_text(request: SearchTextRequest):
+    """
+    Умный поиск по смыслу: клиент передает обычный вопрос/текст,
+    нейросеть переводит его в вектор и ищет релевантные совпадения.
+    """
+    try:
+        # 1. Векторизуем поисковый запрос пользователя
+        query_vector = embedder.encode(request.query_text)
+
+        # 2. Ищем по векторному пространству
+        results = store.search(
+            query_vector=query_vector,
+            top_k=request.top_k,
+            filters=request.filters,
+            threshold=request.threshold,
+        )
+        return {"results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
